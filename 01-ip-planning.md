@@ -1,5 +1,20 @@
 # IP Planning
 
+### 🚀 Deployment Progress
+
+Progress: 🟩⬜⬜⬜⬜⬜⬜⬜⬜ (1/9 steps completed)
+
+Steps:
+- 🟩 Step 1: IP Planning
+- ⬜ Step 2: Deploy Infrastructure
+- ⬜ Step 3: Workload Protection
+- ⬜ Step 4: Access Management
+- ⬜ Step 5: Upgrade Management
+- ⬜ Step 6: Governance
+- ⬜ Step 7: Monitoring
+- ⬜ Step 8: Defender for Containers
+- ⬜ Step 9: Automation
+
  **In This Article:**
 
 - [IP Planning](#ip-planning)

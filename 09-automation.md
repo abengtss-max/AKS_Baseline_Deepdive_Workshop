@@ -1,5 +1,20 @@
 # Automation
 
+### 🚀 Deployment Progress
+
+Progress: 🟩🟩🟩🟩🟩🟩🟩🟩🟩 (9/9 steps completed)
+
+Steps:
+- 🟩 Step 1: IP Planning
+- 🟩 Step 2: Deploy Infrastructure
+- 🟩 Step 3: Workload Protection
+- 🟩 Step 4: Access Management
+- 🟩 Step 5: Upgrade Management
+- 🟩 Step 6: Governance
+- 🟩 Step 7: Monitoring
+- 🟩 Step 8: Defender for Containers
+- 🟩 Step 9: Automation
+
 
 ## Introduction
 This section contains instructions about how to automate deployment of the infrastructure for AKS Secure Baseline, using Azure Devops Pipelines and Terraform. The central idea is to have the complete infrastructure defined as code (IaC) and that deployment of that infrastructure can be completely automated using Deployment Pipelines. 
