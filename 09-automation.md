@@ -2,261 +2,371 @@
 
 
 ## Introduction
-This section contains instructions about how to automate deployment of the infrastructure for AKS Secure Baseline, using Azure Devops Pipelines and Terraform. The central idea is to have the complete infrastructure defined as code (IaC) and that deployment of that infrastructure can be completely automated using Deployment Pipelines. 
+
+This section provides comprehensive instructions for automating the deployment of the AKS Secure Baseline infrastructure using Azure DevOps Pipelines and Terraform. Our approach follows Azure best practices with Infrastructure as Code (IaC), GitOps workflows, and modern container-based build agents.
+
+## Architecture Overview
+
+```mermaid
+graph TB
+    A[Azure DevOps] --> B[Container-based Agents]
+    B --> C[Terraform]
+    C --> D[Azure Resources]
+    E[Key Vault] --> B
+    F[Managed Identity] --> B
+    G[Storage Account] --> C
+```
+
+## Prerequisites
+
+Before starting, ensure you have:
+- Azure subscription with Contributor access
+- Azure DevOps organization access
+- Azure CLI (version 2.50.0 or later)
+- Basic understanding of Terraform and YAML pipelines
+
+## Terraform Structure
+
+The repository contains modular Terraform configurations:
+
+```
+terraform/
+├── main.tf                 # Main orchestration file
+├── variables.tf           # Variable definitions
+├── outputs.tf            # Output values
+└── modules/              # Reusable modules
+    ├── aks/             # AKS cluster configuration
+    ├── networking/      # Virtual network setup
+    ├── security/        # Security components
+    └── monitoring/      # Observability setup
+```
+
+Each module follows Azure best practices for:
+- Resource naming conventions
+- Network isolation
+- Security hardening
+- Cost optimization
+
+## Azure DevOps Setup
+
+### 1. Create Service Connection (Best Practice Method)
+
+Instead of using Owner permissions, we'll create a service connection with minimal required permissions:
+
+#### Step 1: Create Service Principal with Least Privilege
+
+```bash
+# Set variables
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+SP_NAME="sp-aks-baseline-$(date +%s)"
+RESOURCE_GROUP="rg-aks-baseline"
+
+# Create Service Principal with Contributor role scoped to resource group
+SP_CREDENTIALS=$(az ad sp create-for-rbac \
+  --name $SP_NAME \
+  --role "Contributor" \
+  --scopes "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP" \
+  --sdk-auth)
+
+# Extract values
+CLIENT_ID=$(echo $SP_CREDENTIALS | jq -r .clientId)
+CLIENT_SECRET=$(echo $SP_CREDENTIALS | jq -r .clientSecret)
+TENANT_ID=$(echo $SP_CREDENTIALS | jq -r .tenantId)
+
+# Grant additional required permissions
+# AKS cluster admin
+az role assignment create \
+  --assignee $CLIENT_ID \
+  --role "Azure Kubernetes Service Cluster Admin Role" \
+  --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP"
+
+# Key Vault Secrets Officer (for secret management)
+az role assignment create \
+  --assignee $CLIENT_ID \
+  --role "Key Vault Secrets Officer" \
+  --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP"
+
+# Network Contributor (for VNET operations)
+az role assignment create \
+  --assignee $CLIENT_ID \
+  --role "Network Contributor" \
+  --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP"
+
+# User Access Administrator (for managed identity assignments)
+az role assignment create \
+  --assignee $CLIENT_ID \
+  --role "User Access Administrator" \
+  --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP"
+
+echo "Service Principal created successfully"
+echo "Client ID: $CLIENT_ID"
+echo "Save the credentials securely"
+```
+
+#### Step 2: Create Service Connection in Azure DevOps
+
+1. Navigate to **Project Settings** → **Service connections**
+2. Click **New service connection** → **Azure Resource Manager**
+3. Select **Service principal (manual)**
+4. Fill in the details:
+   - **Connection name**: `azure-aks-baseline-connection`
+   - **Subscription Id**: Your Azure subscription ID
+   - **Subscription Name**: Your subscription name
+   - **Service Principal Id**: The CLIENT_ID from above
+   - **Service principal key**: The CLIENT_SECRET from above
+   - **Tenant ID**: The TENANT_ID from above
+5. Click **Verify** to test the connection
+6. Check **Grant access permission to all pipelines** (or configure per-pipeline)
+7. Click **Verify and save**
+
+### 2. Modern Build Agent Setup (Container-based)
 
 
-## Terraform
-In this repository, there are a number of Terraform templates. You will not use them directly, and instead call them from a pipeline. It is still a good idea to understand the content of the terraform templates. 
+#### Option A: Azure Container Instances (Recommended)
 
-In the folder named "Terraform" you will find the main template, aptly named ````main.tf````
+```bash
+# Deploy container-based agents using the build-agent module
+cd terraform/modules/build-agent
 
-This main template is referencing a number of *modules*. The modules in term are responsible for deploying the various Azure resources used in the AKS Secure Baseline. You will see an AKS module, an application_gateway module, a virtual_network module, and so on.
+# Create tfvars file
+cat > agent.tfvars <<EOF
+name                = "aks-baseline-agents"
+resource_group_name = "rg-build-agents"
+location            = "westeurope"
+environment         = "production"
+azdo_org_url       = "https://dev.azure.com/YOUR_ORG"
+azdo_pool_name     = "Container-Pool"
+agent_count        = 2
+agent_cpu          = 2
+agent_memory       = 4
+use_container_instances = true
+EOF
 
-Please take some time to familiarize yourself with the content of the templates. No need to understand everything, but try to get an overview at least.
-
-## Azure Devops
-
-Azure Devops is the tool that will be used to run the templates. In order to do so, you need to go through a couple of steps, which will be detailed further down:
-
-* Login to the Azure Devops organization (we have prepared the organization for you)
-* Create a service connection to Azure, to allow the pipeline to interact with Azure and AKS
-* Create a self-hosted agent that will run all the tasks in the pipeline (we have prepared this as well)
-* Clone repository (this repository) to give Azure Devops access to the Terraform templates, and the preconfigured pipeline definitions (we have prepared this )
-* Edit the necessary parameters, and run the pipeline
-* Troubleshoot... :-)
-
-### Login to the Azure Devops organization
-
-Login using the azure identity created for this workshop.
-
-<img src="images/azdo-login.png" width="400">
-
-<br>
-
-When logged in you should see something similar to this:
-
-
-<img src="images/azdo-logged-in.png" width="400">
-
-
-### Create a service connection to Azure
-
-There are different ways to create a connection from Azure Devops to Azure. One of the common approaches (but not the easiest) is to first create a **Service Principle** in Azure, and give that SP the correct permissions in the subscription. And then as a second step, use that Service Principle in Azure Devops. This is the approach we will have today, because this is most likely how you will have to do it in your real tenant.
-
-Create a Service Principle in Azure, and create a Role Assignment that makes the SP **Owner** in the subscription. First make sure you are logged in to the right subscription with your shell (cloudshell is our suggestion for this step).
-
-````bash
-SP_NAME=<a meaningful name e.g. your team name>
- 
-# Login to Azure
-az login
- 
-# Create a service principal
-sp=$(az ad sp create-for-rbac --name $SP_NAME --sdk-auth)
- 
- 
-# Get the subscription id of the subscription id.
-subscriptionId=$(az account show --query id -o tsv)
- 
-# Extract the service principal id from the service principal creation output
-spId=$(echo $sp | jq -r .clientId)
- 
-#Fetch the clientSecret from the output
-echo $sp | jq -r .clientSecret
- 
-# Assign the 'Owner' role to the service principal for the subscription
-az role assignment create --assignee $spId --role Owner --scope /subscriptions/$subscriptionId
-````
-
-Go back to Azure Devops and open up the project called the same thing as your team (we have already created the project for you).
-
-Go to project settings -> service connections 
-
-Choose "Create new service connection" and select **Azure Resource Manager** and press **next**, then select "Service Prinicipal - Manual". 
-
-<img src="images/service-connection-sp-1.png" width="400">
-
-Fill out the service connection information, using the below image as a template. Use the Service Principal ID and Service Principal Key created in the previous step. 
-
-Give the pipeline a meaningful name and finally check the box named "Grant access permission to all pipelines" and click **Verify and Save**. 
-
-<img src="images/service-connection-sp-2.png" width="400">
-
-
-### Create a self-hosted agent
-Azure Devops provides "Microsoft hosted agents", but you will instead create a Self hosted agent, that will run on a VM in your subscription in Azure. This is so that the agent is able to access resources in your subscriptions that are isolated inside a VNET (for instance the Kubernetes API). 
-
-In order to provide the Self-hosted agent access to Azure Devops, we need to create a **Personal Access Token**, a PAT. 
-
-In Azure Devops, click on the user settings icon in the top left corner (icon is a person with a "cog") and select "Personal Access Tokens".
-
-<img src="images/cog-user-settings-pat.png" width="400">
-
-In the next window that appears, select "Create New Token". In the dialogue that appears, set "Scopes" to "Full Access" and give the token a descriptive name. Remember to copy the token, as it will not be retrievable.
-
-Now use **Azure Cloudshell** to create the agent, using Terraform. This involves a few steps:
-
-1. Clone the repository (this repository) to get access to the template used to create the agent. Then cd into the directory with the self-hosted template (ado-agent)
-
-````bash
-git clone https://github.com/pelithne/AKS_Baseline_Deepdive.git
-
-cd AKS_Baseline_Deepdive/ado-agent/
-````
-
-2. Create environment variables needed for Terraform
-
-````bash
-export TF_VAR_org_service_url=https://dev.azure.com/<Your devops organization name>
-export TF_VAR_personal_access_token=<Previously created PAT>
-export TF_VAR_subscription_id=<Add your subscription ID here.>
-````
-3. Initialize Terraform (important that you are located in AKS_Baseline_Deepdive/ado-agent/)
-
-````bash
+# Deploy
 terraform init
+terraform plan -var-file="agent.tfvars" -var="azdo_pat_token=$PAT_TOKEN"
+terraform apply -var-file="agent.tfvars" -var="azdo_pat_token=$PAT_TOKEN"
+```
+
+#### Option B: Azure Kubernetes Service (For existing AKS clusters)
+
+```yaml
+# kube-agent-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: azdo-agent
+  namespace: build-agents
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: azdo-agent
+  template:
+    metadata:
+      labels:
+        app: azdo-agent
+    spec:
+      serviceAccountName: azdo-agent
+      containers:
+      - name: agent
+        image: mcr.microsoft.com/azure-pipelines/vsts-agent:ubuntu-20.04
+        env:
+        - name: AZP_URL
+          value: "https://dev.azure.com/YOUR_ORG"
+        - name: AZP_POOL
+          value: "Kubernetes-Pool"
+        - name: AZP_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: azdo-pat
+              key: token
+        - name: AZP_AGENT_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+```
+
+### 3. Terraform Backend Configuration
+
+Set up a secure backend for state management:
+
+```bash
+# Create backend resources
+BACKEND_RG="rg-terraform-backend"
+BACKEND_STORAGE="stterraform$RANDOM"
+BACKEND_CONTAINER="tfstate"
+
+# Create resource group
+az group create --name $BACKEND_RG --location westeurope
+
+# Create storage account with security features
+az storage account create \
+  --name $BACKEND_STORAGE \
+  --resource-group $BACKEND_RG \
+  --location westeurope \
+  --sku Standard_GRS \
+  --encryption-services blob \
+  --https-only true \
+  --min-tls-version TLS1_2 \
+  --allow-blob-public-access false
+
+# Enable soft delete and versioning
+az storage account blob-service-properties update \
+  --account-name $BACKEND_STORAGE \
+  --resource-group $BACKEND_RG \
+  --enable-versioning true \
+  --enable-delete-retention true \
+  --delete-retention-days 30
+
+# Create container
+az storage container create \
+  --name $BACKEND_CONTAINER \
+  --account-name $BACKEND_STORAGE \
+  --auth-mode login
+
+# Create containers for each environment
+for env in dev staging production; do
+  az storage container create \
+    --name "tfstate-$env" \
+    --account-name $BACKEND_STORAGE \
+    --auth-mode login
+done
+
+# Output configuration
+echo "Backend configuration:"
+echo "resource_group_name  = \"$BACKEND_RG\""
+echo "storage_account_name = \"$BACKEND_STORAGE\""
+echo "container_name       = \"tfstate-{environment}\""
+echo "key                  = \"{environment}.tfstate\""
+```
+
+### 4. Import Repository
+
+1. Go to **Repos** in Azure DevOps
+2. Select **Import repository**
+3. Enter the clone URL: `https://github.com/pelithne/AKS_Baseline_Deepdive.git`
+4. Click **Import**
+
+### 5. Create Pipeline with Multi-Stage Deployment
+
+Instead of a single-stage pipeline, use our multi-stage approach:
+
+1. Go to **Pipelines** → **New pipeline**
+2. Select **Azure Repos Git**
+3. Choose your imported repository
+4. Select **Existing Azure Pipelines YAML file**
+5. Choose: `/pipelines/azure-infrastructure-pipeline.yml`
+
+### 6. Configure Pipeline Variables
+
+#### Create Variable Groups
+
+1. Go to **Pipelines** → **Library**
+2. Create a new variable group: `terraform-common`
+
+```yaml
+# Common variables
+TerraformVersion: 1.6.0
+TerraformBackendResourceGroup: rg-terraform-backend
+TerraformBackendStorageAccount: <your-storage-account>
+```
+
+3. Create environment-specific groups: `terraform-dev`, `terraform-staging`, `terraform-production`
+
+```yaml
+# Environment-specific variables
+Environment: dev
+AksClusterName: aks-baseline-dev
+ResourceGroupName: rg-aks-baseline-dev
+NodeResourceGroupName: rg-aks-nodes-dev
+```
+
+#### Secure Variables
+
+For sensitive values, use Azure Key Vault:
+
+```bash
+# Create Key Vault
+KV_NAME="kv-aks-baseline-$RANDOM"
+az keyvault create \
+  --name $KV_NAME \
+  --resource-group $BACKEND_RG \
+  --location westeurope \
+  --enable-rbac-authorization
+
+# Add secrets
+az keyvault secret set --vault-name $KV_NAME --name "ssh-public-key" --value "$(cat ~/.ssh/id_rsa.pub)"
+az keyvault secret set --vault-name $KV_NAME --name "azdo-pat" --value "<your-pat>"
+
+# Link Key Vault to Variable Group
+# In Azure DevOps: Library → Variable Group → Link secrets from Azure Key Vault
+```
+
+### 7. Pipeline Execution
+
+Our multi-stage pipeline includes:
+
+1. **Validation Stage**: Syntax checking, security scanning
+2. **Plan Stage**: Terraform plan with manual review
+3. **Deploy Stage**: Controlled deployment with approval gates
+4. **Test Stage**: Automated testing of deployed resources
+
+To run:
+1. Click **Run pipeline**
+2. Select parameters:
+   - Environment: `dev`, `staging`, or `production`
+   - Action: `plan` or `apply`
+3. Review the plan output
+4. Approve deployment (for staging/production)
+
+## Security Best Practices Implemented
+
+1. **Least Privilege Access**: Service principals have minimal required permissions
+2. **Managed Identities**: Used wherever possible instead of service principals
+3. **Key Vault Integration**: All secrets stored in Azure Key Vault
+4. **Network Isolation**: Agents run in isolated networks
+5. **Audit Logging**: All actions logged and traceable
+
+## Cost Optimization
+
+1. **Container-based Agents**: Pay only for active pipeline runs
+2. **Spot Instances**: Used for non-production workloads
+3. **Auto-scaling**: Agents scale based on queue depth
+4. **Scheduled Deletion**: Dev resources deleted outside business hours
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+1. **Service Connection Errors**
+   ```bash
+   # Verify service principal permissions
+   az role assignment list --assignee <CLIENT_ID> --output table
+   ```
+
+2. **State Lock Issues**
+   ```bash
+   # Break lock if needed (use cautiously)
+   terraform force-unlock <LOCK_ID>
+   ```
+
+3. **Agent Connection Issues**
+   ```bash
+   # Check agent logs
+   kubectl logs -n build-agents -l app=azdo-agent
+   ```
+
+## Additional Resources
+
+- [Azure DevOps Security Best Practices](https://docs.microsoft.com/en-us/azure/devops/organizations/security/security-best-practices)
+- [Terraform Azure Provider Documentation](https://registry.terraform.io/providers/hashicorp/azurerm/latest)
+- [AKS Baseline Reference Architecture](https://docs.microsoft.com/en-us/azure/architecture/reference-architectures/containers/aks/secure-baseline-aks)
 ````
-
-You should see the init completing successfully
-
-<img src="images/terraform-init.png" width="600">
-
-
-4. If ````terraform init```` returned without errors, run ````terraform plan```` to create a deployment (but not yet deploy). You will be asked to create a password to be able to access the VM later. Choose something you will remember!
-
-````bash
-terraform plan -out plan.out
-````
-
-5. Terraform plan will display all the changes it will deploy, and store that in the output file, ````plan.out````. When it completes withouth errors, you can use the content in ````plan.out```` to deploy the hosted agent, using ````terraform apply````:
-
-````bash
-terraform apply plan.out
-````
-
-If all went well, this should deploy a VM into a VNET in your subscription and configure the VM with the necessary tools to act as a Self-hosted Agent. In Azure devops it will show up as a self-hosted agent, in the **default** agent pool (more about this later).
-
-This step will also create a storage account that the self hosted agent will use store the terraform state file. 
-
-This is how it should look in Azure Devops, after deployment is complete (it can take up to 10 minutes)
-
-<img src="images/ado-agent.png" width="800">
-
-
-### Clone repository in ADO
-
-Before you can execute the Azure Devops pipeline, you need to "download" all the terraform templates and other things in the repo, to make it available to Azure devops (the repository is in github, remember). 
-
-Go to **repositories** in the left hand navigation bar. Since this project is empty, there will be no repository here. Instead you should import **this** repository.
-
-Select **Import a Repository** and in the blade that opens up, just paste in the address to **this** repo in the **clone URL** field, and press **import**
-
-
-<img src="images/import-repo.png" width="800">
-
-### Create Pipeline
-
-
-Now you can select **Pipelines** from the left hand navigation bar. You should see something similar to this:
-
-
-<img src="images/create-your-first-pipeline.png" width="400">
-
-<br>
-
-Go ahead and **Create Pipeline**
-
-You will now be asked to provide Azure Devops with the location of your code. The code has been imported to your Azure Devops repository, so select **Azure Repos Git**. 
-
-
-<img src="images/where-is-your-code.png" width="400">
-
-
-<br>
-
-
-Then just select the repository, which should be **AKS_Baseline_Deepdive** (this repo). 
-
-
-<img src="images/select-a-repository.png" width="400">
-
-
-<br>
-
-Now, select **Existing Azure Pipelines YAML file** (the alternative at the very bottom)
-
-<img src="images/existing-pipeline.png" width="600">
-
-
-<br>
-
-Finally, you need to specify which pipeline to use. The correct one is ````/pipelines/cd-validate-plan-apply-one-stage-vars.yml```` in the ````main```` branch.
-
-
-<img src="images/select-an-existing-yaml-file.png" width="400">
-
-
-
-### Create global variables
-
-The predefined pipeline needs a few variables to run. Go to **Pipelines** -> **Library** in the left hand navigation bar and select **create new variable group**
-
-<img src="images/new-variable-group.png" width="400">
-
-Then fill out the values as in the image below, using values relevant to your subscription (as described in the table under the image). It is important to name the the group **global-variables** as this is the name we used in the pre-created pipeline.
-
-
-
-<img src="images/new-variable-group-2.png" width="600">
-
-| Key                              | Description                                                       |
-|----------------------------------|-------------------------------------------------------------------|
-| ssh-public-key                   | use e.g. ssh-keygen to generate a key pair. Use the public key here |
-| TerraformBackendContainerName    | tfstate                                                           |
-| TerraformBackendResourceGroupName| rg-agent-terraform                                                |
-| TerraformBackendStorageAccountKey| terraform.tfstate                                                 |
-| TerraformBackendStorageAccountName| name of the storage account created in a previous step         |
-
-<br>
-
-### Run the pipeline
-
-Take a minute to review the pipeline. It's in yaml-format and is reasonably human-understandable. When you have started understanding, go ahead and replace the following variables with information relevant to your subscription. 
-
-
-The "azureSubscription" variable should point to the service connection **name** you previously created.
-````yaml
-- name: azureSubscription
-  value: <service connection name>
-````
-
-
-The "prefix" needs to be unique. For instance you can use a corporate signum. 
-````yaml
-- name: prefix
-  value: <use a globally unique prefix here>
-````
-
-
-
-
-
- 
-All you have to do now, is to run the pipeline (and probably do some more troubleshooting...)
-
-> [!Note]
-> The first time you run the pipeline, you will have to approve a few accesses, before the pipeline is allowed to run.
-
-<img src="images/permit.png" width="400">
-
-<br>
-
-After approving, go ahead and RUN!
-
-<img src="images/run-pipeline.png" width="200">
-
-
-Now go and pour a nice cup of coffee (or your beverage of choice). Take your time, because this might take a while. And when you come back, if all went according to expectations, you have deployed the AKS Secure Baseline using Infrastructure as Code. 
-
-:sweat_smile:   
-
