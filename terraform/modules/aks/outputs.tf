@@ -28,3 +28,18 @@ output "private_fqdn" {
   value       = azurerm_kubernetes_cluster.aks_cluster.private_fqdn
   description = "The FQDN for the Kubernetes Cluster when private link has been enabled, which is only resolvable inside the Virtual Network used by the Kubernetes Cluster."
 }
+
+output "api_server_address" {
+  value       = azurerm_kubernetes_cluster.aks_cluster.fqdn
+  description = "The FQDN of the AKS API server."
+}
+
+output "node_resource_group" {
+  value       = azurerm_kubernetes_cluster.aks_cluster.node_resource_group
+  description = "The name of the resource group containing cluster resources."
+}
+
+output "client_id" {
+  value       = azurerm_user_assigned_identity.aks_identity.client_id
+  description = "The client ID of the managed identity for AKS."
+}

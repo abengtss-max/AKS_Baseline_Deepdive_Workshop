@@ -1,0 +1,18 @@
+# Staging environment deployment pipeline
+# You can customize this file for staging-specific variables or steps
+
+name: 'Staging-Deployment-$(Date:yyyyMMdd)$(Rev:.r)'
+
+trigger:
+  branches:
+    include:
+    - main
+    - develop
+
+pool:
+  name: 'Container-Pool'
+
+stages:
+- template: ../azure-infrastructure-pipeline.yml
+  parameters:
+    environment: staging

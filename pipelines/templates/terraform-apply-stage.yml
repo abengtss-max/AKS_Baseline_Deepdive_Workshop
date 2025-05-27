@@ -1,0 +1,37 @@
+# Apply stage template for Terraform
+parameters:
+  - name: environment
+    type: string
+
+steps:
+- task: DownloadPipelineArtifact@2
+  displayName: 'Download Plan'
+  inputs:
+    artifact: 'tfplan-$(environment)'
+    path: '$(System.DefaultWorkingDirectory)/terraform'
+
+- task: TerraformInstaller@0
+  displayName: 'Install Terraform'
+  inputs:
+    terraformVersion: '1.6.0'
+
+- task: TerraformTaskV4@4
+  displayName: 'Terraform Init'
+  inputs:
+    provider: 'azurerm'
+    command: 'init'
+    workingDirectory: '$(System.DefaultWorkingDirectory)/terraform'
+    backendServiceArm: 'Azure-Service-Connection'
+    backendAzureRmResourceGroupName: $(TerraformBackendResourceGroupName)
+    backendAzureRmStorageAccountName: $(TerraformBackendStorageAccountName)
+    backendAzureRmContainerName: $(TerraformBackendContainerName)
+    backendAzureRmKey: '$(environment).tfstate'
+
+- task: TerraformTaskV4@4
+  displayName: 'Terraform Apply'
+  inputs:
+    provider: 'azurerm'
+    command: 'apply'
+    workingDirectory: '$(System.DefaultWorkingDirectory)/terraform'
+    environmentServiceNameAzureRM: 'Azure-Service-Connection'
+    commandOptions: 'tfplan'

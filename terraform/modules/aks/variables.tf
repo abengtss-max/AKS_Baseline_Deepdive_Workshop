@@ -58,16 +58,15 @@ variable "automatic_channel_upgrade" {
   }
 }
 
-//variable "sku_tier" {
-//  description = "(Optional) The SKU Tier that should be used for this Kubernetes Cluster. Possible values are Free and Paid (which includes the Uptime SLA). Defaults to Free."
-//  default     = "Standard"
-//  type        = string
-
-//  validation {
-//    condition = contains( ["Free", "Paid"], var.sku_tier)
-//    error_message = "The sku tier is invalid."
-//  }
-//}
+variable "sku_tier" {
+  description = "The SKU Tier for this Kubernetes Cluster"
+  type        = string
+  default     = "Free"
+  validation {
+    condition     = contains(["Free", "Standard"], var.sku_tier)
+    error_message = "The SKU tier must be either Free or Standard."
+  }
+}
 
 variable "kubernetes_version" {
   description = "Specifies the AKS Kubernetes version"
@@ -307,5 +306,11 @@ variable "http_application_routing_enabled" {
   description = "(Optional) Should HTTP Application Routing be enabled?"
   type        = bool
   default     = false
+}
+
+variable "authorized_ip_ranges" {
+  description = "List of authorized IP ranges for API server access"
+  type        = list(string)
+  default     = []
 }
 

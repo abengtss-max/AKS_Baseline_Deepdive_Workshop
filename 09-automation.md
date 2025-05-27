@@ -259,5 +259,67 @@ After approving, go ahead and RUN!
 
 Now go and pour a nice cup of coffee (or your beverage of choice). Take your time, because this might take a while. And when you come back, if all went according to expectations, you have deployed the AKS Secure Baseline using Infrastructure as Code. 
 
-:sweat_smile:   
+:sweat_smile:
+
+## Build Agent (Azure DevOps)
+
+The build agent infrastructure is now managed independently from the main Terraform scripts. This allows you to deploy and update your Azure DevOps build agent pool without affecting the rest of your AKS or Azure resources.
+
+### How to Deploy the Build Agent
+
+1. **Navigate to the build-agent directory:**
+
+   ```bash
+   cd build-agent
+   ```
+
+2. **Set the required environment variables:**
+   - These are needed for authentication and configuration. Example:
+
+   ```bash
+   export TF_VAR_name="my-buildagent"
+   export TF_VAR_resource_group_name="my-buildagent-rg"
+   export TF_VAR_resource_group_id="<resource-group-id>"
+   export TF_VAR_location="westeurope"
+   export TF_VAR_environment="dev" # or staging/production
+   export TF_VAR_tenant_id="<your-tenant-id>"
+   export TF_VAR_azdo_org_url="https://dev.azure.com/<your-org>"
+   export TF_VAR_azdo_pat_token="<your-azure-devops-pat>"
+   export TF_VAR_azdo_pool_name="Container-Pool"
+   export TF_VAR_allowed_ips='["<your-ip>"]'
+   export TF_VAR_subnet_ids='[]' # or your subnet ids
+   export TF_VAR_use_container_instances=true
+   export TF_VAR_agent_count=2
+   export TF_VAR_agent_container_image="mcr.microsoft.com/azure-pipelines/vsts-agent:ubuntu-20.04"
+   export TF_VAR_agent_cpu=2
+   export TF_VAR_agent_memory=4
+   export TF_VAR_tags='{"Environment":"dev"}'
+   ```
+
+3. **Initialize Terraform:**
+
+   ```bash
+   terraform init
+   ```
+
+4. **Plan the deployment:**
+
+   ```bash
+   terraform plan -out plan.out
+   ```
+
+5. **Apply the deployment:**
+
+   ```bash
+   terraform apply plan.out
+   ```
+
+6. **Verify:**
+   - The build agent pool and supporting resources (storage, Key Vault, ACR, etc.) will be created in Azure.
+   - Your Azure DevOps organization will show the new agent pool and available agents.
+
+### Notes
+- You can destroy the build agent infrastructure independently by running `terraform destroy` in the `build-agent` directory.
+- This setup is fully decoupled from the main AKS/IaC deployment and can be managed on its own schedule.
+- Make sure your Azure DevOps PAT has sufficient permissions to manage agent pools.
 
