@@ -18,10 +18,10 @@ Please take some time to familiarize yourself with the content of the templates.
 
 Azure Devops is the tool that will be used to run the templates. In order to do so, you need to go through a couple of steps, which will be detailed further down:
 
-* Login to the Azure Devops organization
+* Login to the Azure Devops organization (we have prepared the organization for you)
 * Create a service connection to Azure, to allow the pipeline to interact with Azure and AKS
-* Create a self-hosted agent that will run all the tasks in the pipeline
-* Clone repository (this repository) to give Azure Devops access to the Terraform templates, and the preconfigured pipeline definitions
+* Create a self-hosted agent that will run all the tasks in the pipeline (we have prepared this as well)
+* Clone repository (this repository) to give Azure Devops access to the Terraform templates, and the preconfigured pipeline definitions (we have prepared this )
 * Edit the necessary parameters, and run the pipeline
 * Troubleshoot... :-)
 
@@ -41,9 +41,9 @@ When logged in you should see something similar to this:
 
 ### Create a service connection to Azure
 
-There are different ways to create a connection from Azure Devops to Azure. One of the common approaches is to first create a **Service principal** in Azure, and give that SP the correct permissions in the subscription. Then as a second step, use that Service principal in Azure Devops. This is the approach we will have today, because this is most likely how you will have to do it in your real tenant.
+There are different ways to create a connection from Azure Devops to Azure. One of the common approaches (but not the easiest) is to first create a **Service Principle** in Azure, and give that SP the correct permissions in the subscription. And then as a second step, use that Service Principle in Azure Devops. This is the approach we will have today, because this is most likely how you will have to do it in your real tenant.
 
-Create a Service principal in Azure, and create a Role Assignment that makes the SP **Owner** in the subscription. First make sure you are logged in to the right subscription with your shell (cloudshell is our suggestion for this step).
+Create a Service Principle in Azure, and create a Role Assignment that makes the SP **Owner** in the subscription. First make sure you are logged in to the right subscription with your shell (cloudshell is our suggestion for this step).
 
 ````bash
 SP_NAME=<a meaningful name e.g. your team name>
@@ -53,6 +53,7 @@ az login
  
 # Create a service principal
 sp=$(az ad sp create-for-rbac --name $SP_NAME --sdk-auth)
+ 
  
 # Get the subscription id of the subscription id.
 subscriptionId=$(az account show --query id -o tsv)
@@ -71,13 +72,11 @@ Go back to Azure Devops and open up the project called the same thing as your te
 
 Go to project settings -> service connections 
 
-Choose "Create new service connection" and select **Azure Resource Manager** and press **next**, then select "App-Registration - Manual". 
+Choose "Create new service connection" and select **Azure Resource Manager** and press **next**, then select "Service Prinicipal - Manual". 
 
-<img src="images/service-connection-sp-1b.png" width="400">
+<img src="images/service-connection-sp-1.png" width="400">
 
-Choose **Secret** in the **Credential** drop-down menu.
-
-Next, fill out the service connection information, using the below image as a template. Use the Service Principal ID and Service Principal Key created in the previous step. 
+Fill out the service connection information, using the below image as a template. Use the Service Principal ID and Service Principal Key created in the previous step. 
 
 Give the pipeline a meaningful name and finally check the box named "Grant access permission to all pipelines" and click **Verify and Save**. 
 
@@ -129,7 +128,7 @@ You should see the init completing successfully
 terraform plan -out plan.out
 ````
 
-5. Terraform plan will display all the changes it will deploy, and store that in the output file, ````plan.out````. When it completes without errors, you can use the content in ````plan.out```` to deploy the hosted agent, using ````terraform apply````:
+5. Terraform plan will display all the changes it will deploy, and store that in the output file, ````plan.out````. When it completes withouth errors, you can use the content in ````plan.out```` to deploy the hosted agent, using ````terraform apply````:
 
 ````bash
 terraform apply plan.out
@@ -212,7 +211,7 @@ Then fill out the values as in the image below, using values relevant to your su
 
 | Key                              | Description                                                       |
 |----------------------------------|-------------------------------------------------------------------|
-| sshPublicKey                     | use e.g. ssh-keygen to generate a key pair. Use the public key here |
+| ssh-public-key                   | use e.g. ssh-keygen to generate a key pair. Use the public key here |
 | TerraformBackendContainerName    | tfstate                                                           |
 | TerraformBackendResourceGroupName| rg-agent-terraform                                                |
 | TerraformBackendStorageAccountKey| terraform.tfstate                                                 |
@@ -259,67 +258,5 @@ After approving, go ahead and RUN!
 
 Now go and pour a nice cup of coffee (or your beverage of choice). Take your time, because this might take a while. And when you come back, if all went according to expectations, you have deployed the AKS Secure Baseline using Infrastructure as Code. 
 
-:sweat_smile:
-
-## Build Agent (Azure DevOps)
-
-The build agent infrastructure is now managed independently from the main Terraform scripts. This allows you to deploy and update your Azure DevOps build agent pool without affecting the rest of your AKS or Azure resources.
-
-### How to Deploy the Build Agent
-
-1. **Navigate to the build-agent directory:**
-
-   ```bash
-   cd build-agent
-   ```
-
-2. **Set the required environment variables:**
-   - These are needed for authentication and configuration. Example:
-
-   ```bash
-   export TF_VAR_name="my-buildagent"
-   export TF_VAR_resource_group_name="my-buildagent-rg"
-   export TF_VAR_resource_group_id="<resource-group-id>"
-   export TF_VAR_location="westeurope"
-   export TF_VAR_environment="dev" # or staging/production
-   export TF_VAR_tenant_id="<your-tenant-id>"
-   export TF_VAR_azdo_org_url="https://dev.azure.com/<your-org>"
-   export TF_VAR_azdo_pat_token="<your-azure-devops-pat>"
-   export TF_VAR_azdo_pool_name="Container-Pool"
-   export TF_VAR_allowed_ips='["<your-ip>"]'
-   export TF_VAR_subnet_ids='[]' # or your subnet ids
-   export TF_VAR_use_container_instances=true
-   export TF_VAR_agent_count=2
-   export TF_VAR_agent_container_image="mcr.microsoft.com/azure-pipelines/vsts-agent:ubuntu-20.04"
-   export TF_VAR_agent_cpu=2
-   export TF_VAR_agent_memory=4
-   export TF_VAR_tags='{"Environment":"dev"}'
-   ```
-
-3. **Initialize Terraform:**
-
-   ```bash
-   terraform init
-   ```
-
-4. **Plan the deployment:**
-
-   ```bash
-   terraform plan -out plan.out
-   ```
-
-5. **Apply the deployment:**
-
-   ```bash
-   terraform apply plan.out
-   ```
-
-6. **Verify:**
-   - The build agent pool and supporting resources (storage, Key Vault, ACR, etc.) will be created in Azure.
-   - Your Azure DevOps organization will show the new agent pool and available agents.
-
-### Notes
-- You can destroy the build agent infrastructure independently by running `terraform destroy` in the `build-agent` directory.
-- This setup is fully decoupled from the main AKS/IaC deployment and can be managed on its own schedule.
-- Make sure your Azure DevOps PAT has sufficient permissions to manage agent pools.
+:sweat_smile:   
 
