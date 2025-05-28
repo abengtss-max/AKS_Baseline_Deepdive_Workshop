@@ -6,14 +6,14 @@
 
 ### Step-by-Step: Configure WIF Service Connection
 
-1. **In Azure DevOps:**
+1. **Create the Service Connection in Azure DevOps:**
    - Go to **Project Settings** → **Service connections**
    - Click **Create service connection** → **Azure Resource Manager**
    - For **Identity type**, select **App registration or managed identity (manual)**
    - For **Credential**, select **Workload identity federation (Recommended)**
-   - Follow the wizard to register the app and configure federated credentials
+   - Follow the Azure DevOps wizard to register the app and configure federated credentials. The wizard will guide you through creating the Azure AD app registration and federated credentials.
 
-2. **Assign Azure RBAC Roles:**
+2. **Assign Azure RBAC Roles to the App Registration:**
    - After the app registration is created, assign the required roles (e.g., Contributor) to the app registration on your subscription or resource group:
    ```bash
    az role assignment create \
@@ -21,6 +21,7 @@
      --role "Contributor" \
      --scope "/subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<RESOURCE_GROUP>"
    ```
+   - You may need to assign additional roles depending on your pipeline's needs (e.g., Key Vault Secrets Officer, Network Contributor).
 
 3. **Reference the Service Connection in Pipelines:**
    - Use the new service connection name (e.g., `azure-aks-baseline-wif`) in your pipeline YAML:
@@ -29,7 +30,6 @@
    - name: backendServiceConnection
      value: 'azure-aks-baseline-wif'
    ```
-
    - In Terraform tasks:
    ```yaml
    - task: TerraformTaskV4@4
@@ -48,11 +48,6 @@
      # No client_id or client_secret needed for WIF
    }
    ```
-
----
-
-> **Legacy Method (Not Recommended):**
-> The use of client secrets/service principals for ARM authentication is deprecated and not recommended. Only use if you have a legacy requirement, and migrate to WIF as soon as possible.
 
 ---
 
