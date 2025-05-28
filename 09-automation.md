@@ -1,70 +1,5 @@
 # Automation
 
-## Quick Start: Azure DevOps Service Connection (Best Practice)
-
-> **Best Practice:** Use **Workload Identity Federation (WIF)** for all Azure DevOps service connections. Do **not** use client secrets or legacy service principals for ARM authentication.
-
-### Step-by-Step: Configure WIF Service Connection
-
-#### Decision: Managed Identity vs. Service Principal (App Registration)
-
-> **Best Practice:** For Azure DevOps Pipelines, use a **Service Principal (App Registration)** with Workload Identity Federation (WIF). Managed Identity is only supported for self-hosted agents running in Azure (not for Microsoft-hosted agents). If you are using Microsoft-hosted agents (the default), follow the Service Principal steps below.
-
-1. **Create an Azure AD App Registration (Service Principal):**
-   - Go to the [Azure Portal – App registrations](https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)
-   - Click **New registration**
-   - Enter a name (e.g., `azdo-wif-sp`)
-   - Leave the default settings and click **Register**
-   - After registration, note the **Application (client) ID** and **Directory (tenant) ID**
-
-2. **Assign Azure RBAC Roles to the App Registration:**
-   - Assign the required roles (e.g., Contributor) to the app registration on your subscription or resource group:
-   ```bash
-   az role assignment create \
-     --assignee <APP_OBJECT_ID> \
-     --role "Contributor" \
-     --scope "/subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<RESOURCE_GROUP>"
-   ```
-   - You can find the **Object ID** in the App Registration's Overview page.
-   - Assign additional roles as needed (e.g., Key Vault Secrets Officer, Network Contributor).
-
-3. **Create the Service Connection in Azure DevOps:**
-   - Go to **Project Settings** → **Service connections**
-   - Click **Create service connection** → **Azure Resource Manager**
-   - For **Identity type**, select **App registration or managed identity (manual)**
-   - For **Credential**, select **Workload identity federation (Recommended)**
-   - Enter the **Application (client) ID**, **Directory (tenant) ID**, and follow the wizard to configure federated credentials. The wizard will guide you through linking the Azure DevOps pipeline to the App Registration.
-
-4. **Reference the Service Connection in Pipelines:**
-   - Use the new service connection name (e.g., `azure-aks-baseline-wif`) in your pipeline YAML:
-   ```yaml
-   variables:
-   - name: backendServiceConnection
-     value: 'azure-aks-baseline-wif'
-   ```
-   - In Terraform tasks:
-   ```yaml
-   - task: TerraformTaskV4@4
-     displayName: 'Terraform Init'
-     inputs:
-       provider: 'azurerm'
-       command: 'init'
-       backendServiceArm: $(backendServiceConnection)
-   ```
-
-5. **Terraform Provider Block:**
-   - Use default Azure CLI or Managed Identity authentication (compatible with WIF):
-   ```hcl
-   provider "azurerm" {
-     features {}
-     # No client_id or client_secret needed for WIF
-   }
-   ```
-
-> **Note:** If you are running self-hosted agents in Azure, you may use a User-Assigned Managed Identity and assign it the required roles. See [Microsoft Docs: Use managed identities in Azure Pipelines](https://learn.microsoft.com/en-us/azure/devops/pipelines/library/connect-to-azure?view=azure-devops#use-managed-identities-for-azure-resources) for details.
-
----
-
 ## Introduction
 
 This section provides comprehensive instructions for automating the deployment of the AKS Secure Baseline infrastructure using Azure DevOps Pipelines and Terraform. Our approach follows Azure best practices with Infrastructure as Code (IaC), GitOps workflows, and modern container-based build agents.
@@ -113,11 +48,27 @@ Each module follows Azure best practices for:
 
 ## Azure DevOps Setup
 
-### 1. Create Service Connection (Best Practice Method)
+### 1. Create Resource Group for AKS Infrastructure
+
+```bash
+# Set variables
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+LOCATION="westeurope"  # Change to your preferred location
+RESOURCE_GROUP="rg-aks-baseline"
+```
+
+```bash
+# Create resource group for AKS infrastructure
+az group create --name $RESOURCE_GROUP --location $LOCATION
+```
+
+<!-- If you want to keep the legacy service principal method, you can add it here as a separate, clearly marked block. Otherwise, remove it for clarity. -->
+
+### 2. (Recommended) Use WIF with Azure DevOps Service Connection
 
 Instead of using Owner permissions, we'll create a service connection with minimal required permissions and use the latest Azure DevOps best practices.
 
-#### Step 1: Create Resource Group and Service Principal (if using client secret method)
+#### Step 1: Create Service Principal (if using client secret method)
 
 ```bash
 # Set variables
@@ -125,9 +76,6 @@ SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 LOCATION="westeurope"  # Change to your preferred location
 SP_NAME="sp-aks-baseline-$(date +%s)"
 RESOURCE_GROUP="rg-aks-baseline"
-
-# Create resource group for AKS infrastructure
-az group create --name $RESOURCE_GROUP --location $LOCATION
 
 # (Optional) Create Service Principal with Contributor role scoped to resource group
 # Only needed if you are not using Workload Identity Federation (WIF)
