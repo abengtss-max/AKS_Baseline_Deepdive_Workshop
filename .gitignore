@@ -1,0 +1,2 @@
+# Ignore .NET build output and cache files
+extras/source/obj/

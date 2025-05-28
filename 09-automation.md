@@ -1,5 +1,5 @@
-````markdown
 # Automation
+
 
 ## Introduction
 
@@ -51,48 +51,46 @@ Each module follows Azure best practices for:
 
 ### 1. Create Service Connection (Best Practice Method)
 
-Instead of using Owner permissions, we'll create a service connection with minimal required permissions:
+Instead of using Owner permissions, we'll create a service connection with minimal required permissions and use the latest Azure DevOps best practices.
 
-#### Step 1: Create Service Principal with Least Privilege
+#### Step 1: Create Resource Group and Service Principal (if using client secret method)
 
 ```bash
 # Set variables
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+LOCATION="westeurope"  # Change to your preferred location
 SP_NAME="sp-aks-baseline-$(date +%s)"
 RESOURCE_GROUP="rg-aks-baseline"
 
-# Create Service Principal with Contributor role scoped to resource group
+# Create resource group for AKS infrastructure
+az group create --name $RESOURCE_GROUP --location $LOCATION
+
+# (Optional) Create Service Principal with Contributor role scoped to resource group
+# Only needed if you are not using Workload Identity Federation (WIF)
 SP_CREDENTIALS=$(az ad sp create-for-rbac \
   --name $SP_NAME \
   --role "Contributor" \
   --scopes "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP" \
   --sdk-auth)
 
-# Extract values
+# Extract values (if using client secret method)
 CLIENT_ID=$(echo $SP_CREDENTIALS | jq -r .clientId)
 CLIENT_SECRET=$(echo $SP_CREDENTIALS | jq -r .clientSecret)
 TENANT_ID=$(echo $SP_CREDENTIALS | jq -r .tenantId)
 
-# Grant additional required permissions
-# AKS cluster admin
+# Grant additional required permissions (if using client secret method)
 az role assignment create \
   --assignee $CLIENT_ID \
   --role "Azure Kubernetes Service Cluster Admin Role" \
   --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP"
-
-# Key Vault Secrets Officer (for secret management)
 az role assignment create \
   --assignee $CLIENT_ID \
   --role "Key Vault Secrets Officer" \
   --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP"
-
-# Network Contributor (for VNET operations)
 az role assignment create \
   --assignee $CLIENT_ID \
   --role "Network Contributor" \
   --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP"
-
-# User Access Administrator (for managed identity assignments)
 az role assignment create \
   --assignee $CLIENT_ID \
   --role "User Access Administrator" \
@@ -103,21 +101,85 @@ echo "Client ID: $CLIENT_ID"
 echo "Save the credentials securely"
 ```
 
-#### Step 2: Create Service Connection in Azure DevOps
+#### Step 2: Create Service Connection in Azure DevOps (Workload Identity Federation)
 
-1. Navigate to **Project Settings** → **Service connections**
-2. Click **New service connection** → **Azure Resource Manager**
-3. Select **Service principal (manual)**
-4. Fill in the details:
-   - **Connection name**: `azure-aks-baseline-connection`
-   - **Subscription Id**: Your Azure subscription ID
-   - **Subscription Name**: Your subscription name
-   - **Service Principal Id**: The CLIENT_ID from above
-   - **Service principal key**: The CLIENT_SECRET from above
-   - **Tenant ID**: The TENANT_ID from above
-5. Click **Verify** to test the connection
-6. Check **Grant access permission to all pipelines** (or configure per-pipeline)
-7. Click **Verify and save**
+1. Go to **Project Settings** → **Service connections**
+2. Click **Create service connection** → **Azure Resource Manager**
+3. For **Identity type**, select **App registration or managed identity (manual)**
+4. For **Credential**, select **Workload identity federation (Recommended)**
+5. Fill in the required fields and follow the Azure DevOps wizard to register the app and configure federated credentials.
+6. Assign the necessary Azure RBAC roles to the app registration (see below).
+7. Use this service connection in your pipelines (e.g., `azure-aks-baseline-wif`)
+
+**Note:**
+- You do **not** need to create or store a client secret.
+- The Azure DevOps UI will guide you through the required Azure AD app registration and federated credential setup.
+
+#### Step 3: Assign Azure RBAC Roles to the App Registration (WIF)
+
+The Azure AD app registration used for WIF must have the correct role assignments (e.g., Contributor) on the target subscription/resource group. You can assign these roles using the Azure Portal or CLI after the app registration is created.
+
+**Example:**
+```bash
+az role assignment create \
+  --assignee <APP_OBJECT_ID> \
+  --role "Contributor" \
+  --scope "/subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<RESOURCE_GROUP>"
+```
+
+---
+
+### Terraform Provider Block (WIF)
+
+Use the default Azure CLI or Managed Identity authentication, which is compatible with WIF. Do **not** use `client_id`, `client_secret`, or `azdo_pat_token` for Azure authentication.
+
+```hcl
+provider "azurerm" {
+  features {}
+  # No client_id or client_secret needed for WIF
+}
+```
+
+---
+
+### Pipeline YAML: Use the WIF Service Connection
+
+Reference the new service connection name (e.g., `azure-aks-baseline-wif`) in your pipeline YAML:
+
+```yaml
+variables:
+- name: backendServiceConnection
+  value: 'azure-aks-baseline-wif'
+```
+
+And in your Terraform tasks:
+
+```yaml
+- task: TerraformTaskV4@4
+  displayName: 'Terraform Init'
+  inputs:
+    provider: 'azurerm'
+    command: 'init'
+    backendServiceArm: $(backendServiceConnection)
+    # ...other backend config...
+```
+
+---
+
+### Remove All PAT/Secret References for Azure Authentication
+
+- Remove any references to `azdo_pat_token` or `client_secret` for Azure authentication in your Terraform and pipeline code.
+- If you use PATs for Azure DevOps REST API access (not ARM), keep those, but **do not** use them for Azure Resource Manager authentication.
+
+---
+
+### Summary of Key Changes
+
+- **Use Workload Identity Federation for Azure DevOps service connections.**
+- **Do not use client secrets for ARM authentication.**
+- **Update all documentation and code to reflect this change.**
+- **Assign RBAC roles to the Azure AD app registration created by the WIF wizard.**
+- **Reference the new service connection in all pipeline YAML and Terraform backend/provider blocks.**
 
 ### 2. Modern Build Agent Setup (Container-based)
 
@@ -368,5 +430,9 @@ To run:
 
 - [Azure DevOps Security Best Practices](https://docs.microsoft.com/en-us/azure/devops/organizations/security/security-best-practices)
 - [Terraform Azure Provider Documentation](https://registry.terraform.io/providers/hashicorp/azurerm/latest)
+<<<<<<< HEAD
 - [AKS Baseline Reference Architecture](https://docs.microsoft.com/en-us/azure/architecture/reference-architectures/containers/aks/secure-baseline-aks)
 ````
+=======
+- [AKS Baseline Reference Architecture](https://docs.microsoft.com/en-us/azure/architecture/reference-architectures/containers/aks/secure-baseline-aks)
+>>>>>>> documentation update improved best practices
