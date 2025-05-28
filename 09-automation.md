@@ -6,24 +6,36 @@
 
 ### Step-by-Step: Configure WIF Service Connection
 
-1. **Create the Service Connection in Azure DevOps:**
-   - Go to **Project Settings** → **Service connections**
-   - Click **Create service connection** → **Azure Resource Manager**
-   - For **Identity type**, select **App registration or managed identity (manual)**
-   - For **Credential**, select **Workload identity federation (Recommended)**
-   - Follow the Azure DevOps wizard to register the app and configure federated credentials. The wizard will guide you through creating the Azure AD app registration and federated credentials.
+#### Decision: Managed Identity vs. Service Principal (App Registration)
+
+> **Best Practice:** For Azure DevOps Pipelines, use a **Service Principal (App Registration)** with Workload Identity Federation (WIF). Managed Identity is only supported for self-hosted agents running in Azure (not for Microsoft-hosted agents). If you are using Microsoft-hosted agents (the default), follow the Service Principal steps below.
+
+1. **Create an Azure AD App Registration (Service Principal):**
+   - Go to the [Azure Portal – App registrations](https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)
+   - Click **New registration**
+   - Enter a name (e.g., `azdo-wif-sp`)
+   - Leave the default settings and click **Register**
+   - After registration, note the **Application (client) ID** and **Directory (tenant) ID**
 
 2. **Assign Azure RBAC Roles to the App Registration:**
-   - After the app registration is created, assign the required roles (e.g., Contributor) to the app registration on your subscription or resource group:
+   - Assign the required roles (e.g., Contributor) to the app registration on your subscription or resource group:
    ```bash
    az role assignment create \
      --assignee <APP_OBJECT_ID> \
      --role "Contributor" \
      --scope "/subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<RESOURCE_GROUP>"
    ```
-   - You may need to assign additional roles depending on your pipeline's needs (e.g., Key Vault Secrets Officer, Network Contributor).
+   - You can find the **Object ID** in the App Registration's Overview page.
+   - Assign additional roles as needed (e.g., Key Vault Secrets Officer, Network Contributor).
 
-3. **Reference the Service Connection in Pipelines:**
+3. **Create the Service Connection in Azure DevOps:**
+   - Go to **Project Settings** → **Service connections**
+   - Click **Create service connection** → **Azure Resource Manager**
+   - For **Identity type**, select **App registration or managed identity (manual)**
+   - For **Credential**, select **Workload identity federation (Recommended)**
+   - Enter the **Application (client) ID**, **Directory (tenant) ID**, and follow the wizard to configure federated credentials. The wizard will guide you through linking the Azure DevOps pipeline to the App Registration.
+
+4. **Reference the Service Connection in Pipelines:**
    - Use the new service connection name (e.g., `azure-aks-baseline-wif`) in your pipeline YAML:
    ```yaml
    variables:
@@ -40,7 +52,7 @@
        backendServiceArm: $(backendServiceConnection)
    ```
 
-4. **Terraform Provider Block:**
+5. **Terraform Provider Block:**
    - Use default Azure CLI or Managed Identity authentication (compatible with WIF):
    ```hcl
    provider "azurerm" {
@@ -48,6 +60,8 @@
      # No client_id or client_secret needed for WIF
    }
    ```
+
+> **Note:** If you are running self-hosted agents in Azure, you may use a User-Assigned Managed Identity and assign it the required roles. See [Microsoft Docs: Use managed identities in Azure Pipelines](https://learn.microsoft.com/en-us/azure/devops/pipelines/library/connect-to-azure?view=azure-devops#use-managed-identities-for-azure-resources) for details.
 
 ---
 
