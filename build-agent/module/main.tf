@@ -11,16 +11,6 @@ terraform {
   }
 }
 
-resource "azurerm_dev_center" "main" {
-  name                = "${var.name}-devcenter"
-  resource_group_name = var.resource_group_name
-  location            = var.location
-  identity {
-    type = "SystemAssigned"
-  }
-  tags = var.tags
-}
-
 resource "azurerm_storage_account" "terraform_state" {
   name                     = substr(replace(lower("${var.name}tfstate"), "-", ""), 0, 24)
   resource_group_name      = var.resource_group_name
@@ -49,14 +39,14 @@ resource "azurerm_storage_account" "terraform_state" {
 
 resource "azurerm_storage_container" "terraform_state" {
   name                  = "tfstate"
-  storage_account_id    = azurerm_storage_account.terraform_state.id
+  storage_account_name  = azurerm_storage_account.terraform_state.name
   container_access_type = "private"
 }
 
 resource "azurerm_storage_container" "terraform_state_env" {
   for_each              = toset(["dev", "staging", "production"])
   name                  = "tfstate-${each.key}"
-  storage_account_id    = azurerm_storage_account.terraform_state.id
+  storage_account_name  = azurerm_storage_account.terraform_state.name
   container_access_type = "private"
 }
 
@@ -67,12 +57,15 @@ resource "azurerm_container_registry" "acr" {
   sku                 = var.environment == "production" ? "Premium" : "Basic"
   admin_enabled       = false
   dynamic "network_rule_set" {
-    for_each = var.environment == "production" ? [1] : []
+    for_each = var.environment == "production" && length(var.allowed_ips) > 0 ? [1] : []
     content {
       default_action = "Deny"
-      ip_rule {
-        action   = "Allow"
-        ip_range = var.allowed_ips[0]
+      dynamic "ip_rule" {
+        for_each = var.allowed_ips
+        content {
+          action   = "Allow"
+          ip_range = ip_rule.value
+        }
       }
     }
   }
@@ -133,25 +126,23 @@ resource "azurerm_container_group" "build_agent" {
       protocol = "TCP"
     }
   }
-  dynamic "subnet_ids" {
-    for_each = var.environment == "production" ? [1] : []
-    content {
-      subnet_ids = var.subnet_ids
-    }
-  }
+  
+  
   tags = var.tags
 }
 
 resource "azurerm_role_assignment" "storage_blob_contributor" {
+  count                = var.use_container_instances ? var.agent_count : 0
   scope                = azurerm_storage_account.terraform_state.id
   role_definition_name = "Storage Blob Data Contributor"
-  principal_id         = azurerm_dev_center.main.identity[0].principal_id
+  principal_id         = azurerm_container_group.build_agent[count.index].identity[0].principal_id
 }
 
 resource "azurerm_role_assignment" "key_vault_secrets_user" {
+  count                = var.use_container_instances ? var.agent_count : 0
   scope                = azurerm_key_vault.build_agent.id
   role_definition_name = "Key Vault Secrets User"
-  principal_id         = azurerm_dev_center.main.identity[0].principal_id
+  principal_id         = azurerm_container_group.build_agent[count.index].identity[0].principal_id
 }
 
 resource "azurerm_role_assignment" "container_instance_contributor" {

@@ -35,11 +35,6 @@ output "key_vault_uri" {
   value       = azurerm_key_vault.build_agent.vault_uri
 }
 
-output "dev_center_id" {
-  description = "Dev Center ID"
-  value       = azurerm_dev_center.main.id
-}
-
 output "container_instance_ids" {
   description = "Container instance IDs"
   value       = var.use_container_instances ? azurerm_container_group.build_agent[*].id : []

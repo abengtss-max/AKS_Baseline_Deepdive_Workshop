@@ -78,13 +78,35 @@ This approach provides:
 cd build-agent
 ```
 
-**Create terraform.tfvars file:**
+**Copy the example file:**
 ```bash
 # Copy the example file
 cp terraform.tfvars.example terraform.tfvars
+```
 
-# Edit with your values
-cat > terraform.tfvars << EOF
+**Create terraform.tfvars configuration:**
+```hcl
+name                = "aks-baseline"
+resource_group_name = "rg-aks-baseline-agents"
+location           = "westeurope"
+environment        = "production"
+azdo_org_url       = "https://dev.azure.com/YOUR_ORG_NAME"
+azdo_pool_name     = "aks-baseline-agents"
+use_container_instances = true
+agent_count            = 2
+agent_cpu              = 2
+agent_memory           = 4
+tags = {
+  Environment = "production"
+  Project     = "aks-baseline"
+  Purpose     = "build-agents"
+}
+```
+
+**Alternative: Create the file using cat command:**
+```bash
+# Create terraform.tfvars with content above
+cat > terraform.tfvars << 'EOF'
 name                = "aks-baseline"
 resource_group_name = "rg-aks-baseline-agents"
 location           = "westeurope"
@@ -105,11 +127,8 @@ EOF
 
 **Set Azure DevOps PAT token:**
 ```bash
-# Set as environment variable (recommended)
+# Set as environment variable
 export TF_VAR_azdo_pat_token="YOUR_PAT_TOKEN_HERE"
-
-# Or add to terraform.tfvars (less secure)
-echo 'azdo_pat_token = "YOUR_PAT_TOKEN_HERE"' >> terraform.tfvars
 ```
 
 **Set Azure context:**
@@ -117,6 +136,21 @@ echo 'azdo_pat_token = "YOUR_PAT_TOKEN_HERE"' >> terraform.tfvars
 # Get tenant ID and set required variables
 export TF_VAR_tenant_id=$(az account show --query tenantId -o tsv)
 export TF_VAR_resource_group_id="/subscriptions/$(az account show --query id -o tsv)/resourceGroups/rg-aks-baseline-agents"
+```
+
+**Validate environment variables:**
+```bash
+# Validate that variables are properly set
+echo "Validating environment variables:"
+echo "TF_VAR_tenant_id: $TF_VAR_tenant_id"
+echo "TF_VAR_resource_group_id: $TF_VAR_resource_group_id"
+echo "TF_VAR_azdo_pat_token: $(if [ -n "$TF_VAR_azdo_pat_token" ]; then echo "***SET***"; else echo "NOT SET"; fi)"
+```
+
+**Verify Azure CLI authentication:**
+```bash
+# Verify Azure CLI is authenticated
+az account show --query "user.name" -o tsv
 ```
 
 **Create resource group:**
