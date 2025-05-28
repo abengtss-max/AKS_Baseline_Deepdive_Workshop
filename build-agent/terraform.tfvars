@@ -6,7 +6,7 @@ name                = "aks-baseline"
 resource_group_name = "rg-aks-baseline-agents"
 resource_group_id   = "/subscriptions/e217cd2f-1a4f-44a8-b5ce-7ed01cb0dd4a/resourceGroups/rg-aks-baseline-agents"
 location           = "westeurope"
-environment        = "production"
+environment        = "dev"
 tenant_id          = "2d3522cb-b8b3-4f1e-9311-000f54e5c96f"
 
 # Azure DevOps Configuration
@@ -20,12 +20,15 @@ agent_count            = 2
 agent_cpu              = 2
 agent_memory           = 4
 
-# Network Security (Optional)
-# allowed_ips = ["YOUR_PUBLIC_IP/32"]  # Add your public IP for secure access
+# Network Configuration
+allowed_ips = ["188.150.96.140"]
 
 # Tags
 tags = {
-  Environment = "production"
+  Environment = "dev"
   Project     = "aks-baseline"
   Purpose     = "build-agents"
 }
+
+# Network Security (Optional)
+# allowed_ips = ["YOUR_PUBLIC_IP/32"]  # Add your public IP for secure access
