@@ -1,5 +1,60 @@
 # Automation
 
+## Quick Start: Azure DevOps Service Connection (Best Practice)
+
+> **Best Practice:** Use **Workload Identity Federation (WIF)** for all Azure DevOps service connections. Do **not** use client secrets or legacy service principals for ARM authentication.
+
+### Step-by-Step: Configure WIF Service Connection
+
+1. **In Azure DevOps:**
+   - Go to **Project Settings** → **Service connections**
+   - Click **Create service connection** → **Azure Resource Manager**
+   - For **Identity type**, select **App registration or managed identity (manual)**
+   - For **Credential**, select **Workload identity federation (Recommended)**
+   - Follow the wizard to register the app and configure federated credentials
+
+2. **Assign Azure RBAC Roles:**
+   - After the app registration is created, assign the required roles (e.g., Contributor) to the app registration on your subscription or resource group:
+   ```bash
+   az role assignment create \
+     --assignee <APP_OBJECT_ID> \
+     --role "Contributor" \
+     --scope "/subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<RESOURCE_GROUP>"
+   ```
+
+3. **Reference the Service Connection in Pipelines:**
+   - Use the new service connection name (e.g., `azure-aks-baseline-wif`) in your pipeline YAML:
+   ```yaml
+   variables:
+   - name: backendServiceConnection
+     value: 'azure-aks-baseline-wif'
+   ```
+
+   - In Terraform tasks:
+   ```yaml
+   - task: TerraformTaskV4@4
+     displayName: 'Terraform Init'
+     inputs:
+       provider: 'azurerm'
+       command: 'init'
+       backendServiceArm: $(backendServiceConnection)
+   ```
+
+4. **Terraform Provider Block:**
+   - Use default Azure CLI or Managed Identity authentication (compatible with WIF):
+   ```hcl
+   provider "azurerm" {
+     features {}
+     # No client_id or client_secret needed for WIF
+   }
+   ```
+
+---
+
+> **Legacy Method (Not Recommended):**
+> The use of client secrets/service principals for ARM authentication is deprecated and not recommended. Only use if you have a legacy requirement, and migrate to WIF as soon as possible.
+
+---
 
 ## Introduction
 
@@ -430,9 +485,4 @@ To run:
 
 - [Azure DevOps Security Best Practices](https://docs.microsoft.com/en-us/azure/devops/organizations/security/security-best-practices)
 - [Terraform Azure Provider Documentation](https://registry.terraform.io/providers/hashicorp/azurerm/latest)
-<<<<<<< HEAD
 - [AKS Baseline Reference Architecture](https://docs.microsoft.com/en-us/azure/architecture/reference-architectures/containers/aks/secure-baseline-aks)
-````
-=======
-- [AKS Baseline Reference Architecture](https://docs.microsoft.com/en-us/azure/architecture/reference-architectures/containers/aks/secure-baseline-aks)
->>>>>>> documentation update improved best practices
