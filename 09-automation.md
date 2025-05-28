@@ -68,49 +68,80 @@ az group create --name $RESOURCE_GROUP --location $LOCATION
 
 Instead of using Owner permissions, we'll create a service connection with minimal required permissions and use the latest Azure DevOps best practices.
 
-#### Step 1: Create Service Principal (if using client secret method)
+#### Step 1: Create Service Principal (Legacy Method - Not Recommended)
 
+> **⚠️ Note**: This method uses client secrets and is not recommended. Use Workload Identity Federation (WIF) instead as shown in the Quick Start section above.
+
+**Set up environment variables:**
 ```bash
 # Set variables
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 LOCATION="westeurope"  # Change to your preferred location
 SP_NAME="sp-aks-baseline-$(date +%s)"
 RESOURCE_GROUP="rg-aks-baseline"
+```
 
-# (Optional) Create Service Principal with Contributor role scoped to resource group
-# Only needed if you are not using Workload Identity Federation (WIF)
+**Create Service Principal with basic permissions:**
+```bash
+# Create Service Principal with Contributor role scoped to resource group
 SP_CREDENTIALS=$(az ad sp create-for-rbac \
   --name $SP_NAME \
   --role "Contributor" \
   --scopes "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP" \
   --sdk-auth)
+```
 
-# Extract values (if using client secret method)
+**Extract Service Principal values:**
+```bash
+# Extract values for use in Azure DevOps
 CLIENT_ID=$(echo $SP_CREDENTIALS | jq -r .clientId)
 CLIENT_SECRET=$(echo $SP_CREDENTIALS | jq -r .clientSecret)
 TENANT_ID=$(echo $SP_CREDENTIALS | jq -r .tenantId)
+```
 
-# Grant additional required permissions (if using client secret method)
+**Grant AKS Cluster Admin permissions:**
+```bash
+# Grant AKS Cluster Admin Role
 az role assignment create \
   --assignee $CLIENT_ID \
   --role "Azure Kubernetes Service Cluster Admin Role" \
   --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP"
+```
+
+**Grant Key Vault permissions:**
+```bash
+# Grant Key Vault Secrets Officer
 az role assignment create \
   --assignee $CLIENT_ID \
   --role "Key Vault Secrets Officer" \
   --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP"
+```
+
+**Grant Network permissions:**
+```bash
+# Grant Network Contributor
 az role assignment create \
   --assignee $CLIENT_ID \
   --role "Network Contributor" \
   --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP"
+```
+
+**Grant User Access Administrator permissions:**
+```bash
+# Grant User Access Administrator (for role assignments)
 az role assignment create \
   --assignee $CLIENT_ID \
   --role "User Access Administrator" \
   --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP"
+```
 
+**Display results:**
+```bash
+# Display Service Principal information
 echo "Service Principal created successfully"
 echo "Client ID: $CLIENT_ID"
-echo "Save the credentials securely"
+echo "Tenant ID: $TENANT_ID"
+echo "⚠️ Save the CLIENT_SECRET securely - it will not be shown again"
 ```
 
 #### Step 2: Create Service Connection in Azure DevOps (Workload Identity Federation)
