@@ -32,23 +32,5 @@ resource "azurerm_subnet" "subnet" {
   resource_group_name                            = var.resource_group_name
   virtual_network_name                           = azurerm_virtual_network.vnet.name
   address_prefixes                               = each.value.address_prefixes
-  //private_endpoint_network_policies_enabled = each.value.private_endpoint_network_policies_enabled
   private_link_service_network_policies_enabled  = each.value.private_link_service_network_policies_enabled
 }
-
-
-/*
-resource "azurerm_monitor_diagnostic_setting" "settings" {
-  name                       = "DiagnosticsSettings"
-  target_resource_id         = azurerm_virtual_network.vnet.id
-  log_analytics_workspace_id = var.log_analytics_workspace_id
-
-  enabled_log {
-    category = "VMProtectionAlerts"
-  }
-
-  metric {
-    category = "AllMetrics"
-  }
-}
-*/

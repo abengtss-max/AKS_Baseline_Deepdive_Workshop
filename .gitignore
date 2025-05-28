@@ -1,2 +1,5 @@
-# Ignore .NET build output and cache files
-extras/source/obj/
+# Standard gitignore for Terraform and general development
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl

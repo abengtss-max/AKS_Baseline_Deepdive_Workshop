@@ -46,30 +46,9 @@ resource "azurerm_user_assigned_identity" "acr_identity" {
   tags                = var.tags
 
   name = "${var.name}Identity"
-
   lifecycle {
     ignore_changes = [
       tags
     ]
   }
 }
-
-/*
-resource "azurerm_monitor_diagnostic_setting" "settings" {
-  name                       = "DiagnosticsSettings"
-  target_resource_id         = azurerm_container_registry.acr.id
-  log_analytics_workspace_id = var.log_analytics_workspace_id
-
-  enabled_log {
-    category = "ContainerRegistryRepositoryEvents"
-  }
-
-  enabled_log {
-    category = "ContainerRegistryLoginEvents"
-  }
-
-  metric {
-    category = "AllMetrics"
-  }
-}
-*/
