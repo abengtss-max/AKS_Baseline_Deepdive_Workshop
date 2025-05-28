@@ -1,0 +1,29 @@
+# Build Agent Terraform Variables
+# Copy this file to terraform.tfvars and customize for your environment
+
+# Basic Configuration
+name                = "aks-baseline"
+resource_group_name = "rg-aks-baseline-agents"
+location           = "westeurope"
+environment        = "production"
+
+# Azure DevOps Configuration
+azdo_org_url       = "https://dev.azure.com/YOUR_ORG_NAME"
+azdo_pool_name     = "aks-baseline-agents"
+# azdo_pat_token   = "YOUR_PAT_TOKEN"  # Set via environment variable or prompt
+
+# Agent Configuration
+use_container_instances = true
+agent_count            = 2
+agent_cpu              = 2
+agent_memory           = 4
+
+# Network Security (Optional)
+# allowed_ips = ["YOUR_PUBLIC_IP/32"]  # Add your public IP for secure access
+
+# Tags
+tags = {
+  Environment = "production"
+  Project     = "aks-baseline"
+  Purpose     = "build-agents"
+}
