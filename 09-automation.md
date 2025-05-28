@@ -12,9 +12,38 @@ graph TB
     B --> C[Terraform]
     C --> D[Azure Resources]
     E[Key Vault] --> B
-    F[Managed Identity] --> B
+    F[Service Principal<br/>+ Workload Identity Federation] --> B
     G[Storage Account] --> C
+    
+    subgraph "Authentication Flow"
+        H[OIDC Token] --> F
+        F --> I[Azure RBAC Roles]
+        I --> D
+        I --> E
+        I --> G
+    end
 ```
+
+## Authentication Architecture Explained
+
+**Important Clarification:** The authentication uses a **Service Principal with Workload Identity Federation**, not a traditional managed identity.
+
+### How it works:
+
+1. **Service Principal**: Created in Step 4, this is the identity that has RBAC permissions to deploy Azure resources
+2. **Workload Identity Federation**: Azure DevOps authenticates to Azure using OIDC tokens (no client secrets)
+3. **Container Agents**: The build agents run in containers but authenticate using the Service Principal credentials
+4. **RBAC Permissions**: The Service Principal has Contributor, Storage Blob Data Contributor, and Key Vault Secrets Officer roles
+
+### Authentication Flow:
+```
+Azure DevOps Pipeline → OIDC Token → Service Principal → Azure RBAC → Deploy Resources
+```
+
+This approach provides:
+- **No stored secrets** (Workload Identity Federation uses OIDC)
+- **Least privilege access** (Service Principal has specific RBAC roles)
+- **Secure authentication** (Token-based authentication with Azure AD)
 
 ## Prerequisites
 
