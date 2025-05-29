@@ -75,7 +75,7 @@ variable "agent_count" {
 variable "agent_container_image" {
   description = "Container image for build agent"
   type        = string
-  default     = "mcr.microsoft.com/azure-pipelines/vsts-agent:ubuntu-20.04"
+  default     = "mcr.microsoft.com/azure-pipelines/vsts-agent"
 }
 
 variable "agent_cpu" {
